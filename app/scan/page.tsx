@@ -1,13 +1,15 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import Link from 'next/link';
 import { 
   ShieldCheck, ShieldAlert, Search, Loader2, Activity, 
-  ArrowLeft, AlertTriangle, History, Trash2, Clock, Globe, Lock
+  ArrowLeft, AlertTriangle, History, Trash2, Clock, 
+  Globe, Lock, MapPin, Server, ChevronDown, ExternalLink 
 } from 'lucide-react';
 
+// Tipe Data
 interface ScanHistory {
   url: string;
   is_phishing: boolean | number;
@@ -21,16 +23,26 @@ export default function ScanPage() {
   const [result, setResult] = useState<any>(null);
   const [error, setError] = useState('');
   
+  // State History & Dropdown
   const [history, setHistory] = useState<ScanHistory[]>([]);
+  const [showHistory, setShowHistory] = useState(false);
+  const historyRef = useRef<HTMLDivElement>(null);
 
-  // Port Backend (Sesuaikan)
   const API_URL = 'http://127.0.0.1:8000/api/v1/predict'; 
 
+  // Load History & Click Outside Listener
   useEffect(() => {
     const savedHistory = localStorage.getItem('scanHistory');
-    if (savedHistory) {
-      setHistory(JSON.parse(savedHistory));
-    }
+    if (savedHistory) setHistory(JSON.parse(savedHistory));
+
+    // Tutup dropdown kalau klik di luar
+    const handleClickOutside = (event: MouseEvent) => {
+      if (historyRef.current && !historyRef.current.contains(event.target as Node)) {
+        setShowHistory(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
   const saveToHistory = (data: any, scannedUrl: string) => {
@@ -54,15 +66,16 @@ export default function ScanPage() {
     e.preventDefault();
     if (!url) return;
     setLoading(true);
-    setError('');
-    setResult(null);
-
+    // ...
     try {
       const response = await axios.post(API_URL, { url: url });
-      const data = response.data;
-      console.log("DATA DARI BACKEND:", data); // Cek console browser untuk lihat 'impersonation'
-      setResult(data);
-      saveToHistory(data, url);
+      
+      // 👇 TAMBAHKAN LOG INI
+      console.log("🔍 HASIL SCAN:", response.data);
+      console.log("🌍 DATA LOKASI:", response.data.network_info?.location);
+
+      setResult(response.data);
+      saveToHistory(response.data, url);
     } catch (err: any) {
       console.error(err);
       if (err.code === "ERR_NETWORK") {
@@ -75,255 +88,274 @@ export default function ScanPage() {
     }
   };
 
+  // Helper untuk generate URL Map (OpenStreetMap Embed)
+  const getMapUrl = (lat: string, lon: string) => {
+    const delta = 0.05; // Zoom level logic
+    const bbox = `${parseFloat(lon)-delta},${parseFloat(lat)-delta},${parseFloat(lon)+delta},${parseFloat(lat)+delta}`;
+    return `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${lat},${lon}`;
+  };
+
   return (
-    <main className="min-h-screen bg-slate-950 text-slate-200 p-4 flex flex-col items-center justify-center relative">
+    <main className="min-h-screen bg-slate-950 text-slate-200 p-4 relative font-sans">
       
-      <div className="absolute top-0 left-0 w-full h-full overflow-hidden -z-10 pointer-events-none">
-        <div className="absolute top-[-10%] right-[-10%] w-96 h-96 bg-emerald-500/10 rounded-full blur-[128px]" />
+      {/* Background Decor */}
+      <div className="fixed top-0 left-0 w-full h-full overflow-hidden -z-10 pointer-events-none">
+        <div className="absolute top-[-10%] right-[-10%] w-[500px] h-[500px] bg-emerald-500/5 rounded-full blur-[128px]" />
+        <div className="absolute bottom-[-10%] left-[-10%] w-[500px] h-[500px] bg-blue-500/5 rounded-full blur-[128px]" />
       </div>
 
-      <div className="absolute top-6 left-6 z-20">
+      {/* --- NAVBAR --- */}
+      <nav className="max-w-7xl mx-auto flex items-center justify-between py-6 px-4">
         <Link href="/">
-          <button className="flex items-center gap-2 text-slate-400 hover:text-white transition-colors">
-            <ArrowLeft className="w-5 h-5" />
-            <span>Kembali ke Home</span>
+          <button className="flex items-center gap-2 text-slate-400 hover:text-white transition-colors group">
+            <ArrowLeft className="w-5 h-5 group-hover:-translate-x-1 transition-transform" />
+            <span className="font-medium">Kembali</span>
           </button>
         </Link>
-      </div>
 
-      <div className="w-full max-w-3xl space-y-8 animate-in fade-in zoom-in duration-500 mt-20 mb-10">
-        
-        <div className="text-center space-y-4">
-          <div className="inline-flex items-center justify-center p-4 bg-slate-900/80 rounded-2xl border border-slate-800 shadow-xl backdrop-blur-md">
-            <Activity className="w-10 h-10 text-emerald-400" />
-          </div>
-          <h1 className="text-4xl font-extrabold text-white">Scanner URL</h1>
-          <p className="text-slate-400">Analisis keamanan tautan menggunakan AI.</p>
-        </div>
+        {/* History Dropdown */}
+        <div className="relative" ref={historyRef}>
+          <button 
+            onClick={() => setShowHistory(!showHistory)}
+            className={`flex items-center gap-2 px-4 py-2 rounded-full border transition-all ${
+              showHistory ? 'bg-slate-800 border-emerald-500 text-white' : 'bg-slate-900/50 border-slate-700 text-slate-400 hover:border-slate-500'
+            }`}
+          >
+            <History className="w-4 h-4" />
+            <span className="text-sm font-medium">Riwayat</span>
+            <ChevronDown className={`w-3 h-3 transition-transform ${showHistory ? 'rotate-180' : ''}`} />
+          </button>
 
-        <div className="bg-slate-900/60 backdrop-blur-xl p-8 rounded-3xl border border-slate-800 shadow-2xl">
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <div className="relative group">
-              <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                <Search className="h-5 w-5 text-slate-500 group-focus-within:text-emerald-400 transition-colors" />
+          {/* Dropdown Content */}
+          {showHistory && (
+            <div className="absolute right-0 top-12 w-80 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+              <div className="p-4 border-b border-slate-800 flex justify-between items-center">
+                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Scan Terakhir</span>
+                <button onClick={clearHistory} className="text-xs text-red-400 hover:text-red-300 flex items-center gap-1">
+                  <Trash2 className="w-3 h-3" /> Clear
+                </button>
               </div>
-              <input
-                type="url"
-                required
-                className="block w-full pl-12 pr-4 py-4 bg-slate-950 border border-slate-700 rounded-xl text-slate-100 placeholder-slate-600 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 transition-all outline-none text-lg"
-                placeholder="https://suspect-link.com"
+              <div className="max-h-64 overflow-y-auto p-2 space-y-1 custom-scrollbar">
+                {history.length === 0 ? (
+                  <p className="text-center text-slate-600 text-sm py-4">Belum ada riwayat.</p>
+                ) : (
+                  history.map((item, idx) => (
+                    <div key={idx} className="p-3 hover:bg-slate-800/50 rounded-lg cursor-default group transition-colors">
+                      <div className="flex justify-between items-start mb-1">
+                        <p className="text-slate-300 text-xs font-mono truncate w-48">{item.url}</p>
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${
+                          item.is_phishing ? 'bg-red-500/20 text-red-400' : 'bg-emerald-500/20 text-emerald-400'
+                        }`}>
+                          {item.is_phishing ? 'PHISHING' : 'SAFE'}
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-slate-500 flex items-center gap-1">
+                        <Clock className="w-3 h-3" />
+                        {new Date(item.timestamp).toLocaleDateString()}
+                      </p>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      </nav>
+
+      {/* --- MAIN CONTENT --- */}
+      <div className="max-w-5xl mx-auto mt-8 pb-20">
+        
+        {/* Search Bar Big */}
+        <div className="text-center space-y-6 mb-12">
+          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-slate-900 border border-slate-800 text-emerald-400 text-xs font-bold uppercase tracking-wider shadow-lg">
+            <Activity className="w-4 h-4 animate-pulse" />
+            AI Detection System Active
+          </div>
+          
+          <h1 className="text-4xl md:text-5xl font-black text-white tracking-tight">
+            Scanner Keamanan URL
+          </h1>
+
+          <div className="max-w-2xl mx-auto relative group">
+            <div className="absolute -inset-1 bg-gradient-to-r from-emerald-500 to-blue-500 rounded-2xl blur opacity-20 group-hover:opacity-40 transition duration-1000"></div>
+            <form onSubmit={handleSubmit} className="relative bg-slate-900 rounded-xl p-2 flex items-center border border-slate-800 shadow-2xl">
+              <Search className="w-6 h-6 text-slate-500 ml-4 mr-2" />
+              <input 
+                type="url" 
+                placeholder="Tempel link mencurigakan di sini..." 
+                className="w-full bg-transparent border-none outline-none text-slate-200 placeholder-slate-600 text-lg h-12"
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
+                required
               />
-            </div>
-
-            <button
-              type="submit"
-              disabled={loading || !url}
-              className="w-full py-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold rounded-xl transition-all transform active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center shadow-lg shadow-emerald-900/20"
-            >
-              {loading ? (
-                <>
-                  <Loader2 className="animate-spin mr-2 h-5 w-5" />
-                  Menganalisis...
-                </>
-              ) : (
-                <>
-                  <Activity className="mr-2 h-5 w-5" />
-                  Scan Sekarang
-                </>
-              )}
-            </button>
-          </form>
-
+              <button 
+                type="submit" 
+                disabled={loading || !url}
+                className="bg-emerald-600 hover:bg-emerald-500 text-white px-8 h-12 rounded-lg font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              >
+                {loading ? <Loader2 className="animate-spin w-5 h-5" /> : 'Scan'}
+              </button>
+            </form>
+          </div>
+          
           {error && (
-            <div className="mt-6 p-4 bg-red-950/30 border border-red-500/30 rounded-xl text-red-300 flex items-center gap-3">
-              <AlertTriangle className="h-5 w-5 shrink-0" />
-              <span className="text-sm">{error}</span>
+            <div className="inline-flex items-center gap-2 px-4 py-2 bg-red-500/10 border border-red-500/20 text-red-400 rounded-lg text-sm animate-in fade-in slide-in-from-top-2">
+              <AlertTriangle className="w-4 h-4" /> {error}
             </div>
           )}
         </div>
 
-        {/* --- HASIL SCAN --- */}
+        {/* --- RESULT DASHBOARD (BENTO GRID) --- */}
         {result && (
-          <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 w-full">
-            <div className={`p-8 rounded-3xl border shadow-2xl backdrop-blur-md overflow-hidden relative ${
+          <div className="animate-in fade-in slide-in-from-bottom-8 duration-700 grid grid-cols-1 md:grid-cols-12 gap-6">
+            
+            {/* 1. STATUS CARD (MAIN) - 8 Col */}
+            <div className={`md:col-span-8 p-8 rounded-3xl border relative overflow-hidden flex flex-col justify-center items-center text-center ${
               result.is_phishing 
-                ? 'bg-red-950/40 border-red-500/30 shadow-red-900/20' 
-                : 'bg-emerald-950/40 border-emerald-500/30 shadow-emerald-900/20'
+                ? 'bg-red-950/20 border-red-500/30 shadow-[0_0_50px_-10px_rgba(239,68,68,0.2)]' 
+                : 'bg-emerald-950/20 border-emerald-500/30 shadow-[0_0_50px_-10px_rgba(16,185,129,0.2)]'
             }`}>
-              
-              <div className="flex flex-col items-center text-center space-y-6 mb-8">
-                <div className={`p-5 rounded-full ${
-                  result.is_phishing 
-                  ? 'bg-red-500/20 text-red-500' 
-                  : 'bg-emerald-500/20 text-emerald-400'
-                }`}>
-                  {result.is_phishing ? (
-                    <ShieldAlert className="w-16 h-16" />
-                  ) : (
-                    <ShieldCheck className="w-16 h-16" />
-                  )}
-                </div>
+              {/* Background Glow */}
+              <div className={`absolute inset-0 opacity-20 blur-3xl rounded-full ${
+                result.is_phishing ? 'bg-red-600' : 'bg-emerald-600'
+              } -z-10 scale-50`} />
 
-                <div>
-                  <h2 className="text-3xl font-bold mb-2 tracking-wide">
-                    {result.is_phishing ? (
-                      <span className="text-red-400 drop-shadow-[0_0_10px_rgba(248,113,113,0.5)]">PHISHING DETECTED</span>
-                    ) : (
-                      <span className="text-emerald-400 drop-shadow-[0_0_10px_rgba(52,211,153,0.5)]">SAFE URL</span>
-                    )}
-                  </h2>
-                  <p className="text-slate-400 text-sm max-w-md break-all mx-auto font-mono bg-slate-900/50 p-2 rounded-lg border border-slate-800">
-                    {result.url}
-                  </p>
-                </div>
+              <div className={`p-4 rounded-full mb-6 ${
+                result.is_phishing ? 'bg-red-500/20 text-red-500' : 'bg-emerald-500/20 text-emerald-400'
+              }`}>
+                {result.is_phishing ? <ShieldAlert className="w-16 h-16" /> : <ShieldCheck className="w-16 h-16" />}
               </div>
 
-              {/* --- IMPERSONATION WARNING (BARU) --- */}
-              {/* Ini hanya muncul jika backend mengirim object impersonation */}
+              <h2 className="text-4xl font-bold text-white mb-2 tracking-tight">
+                {result.is_phishing ? 'BERBAHAYA (PHISHING)' : 'AMAN (SAFE)'}
+              </h2>
+              <p className="text-slate-400 font-mono text-sm max-w-lg break-all border border-slate-800 bg-slate-900/50 px-3 py-1 rounded-lg">
+                {result.url}
+              </p>
+
+              {/* Impersonation Warning */}
               {result.impersonation && (
-                <div className="mb-8 mx-auto max-w-lg animate-pulse">
-                  <div className="bg-orange-500/10 border border-orange-500/50 rounded-xl p-4 flex items-center gap-4">
-                    <div className="bg-orange-500/20 p-3 rounded-lg">
-                      <AlertTriangle className="w-8 h-8 text-orange-500" />
-                    </div>
-                    <div className="text-left flex-1">
-                      <p className="text-orange-200 text-xs uppercase font-bold tracking-wider mb-1">
-                        Potential Impersonation
-                      </p>
-                      <p className="text-white text-sm">
-                        Link ini terlihat mencoba meniru: <br/>
-                        <span className="text-orange-400 font-bold text-lg block mt-1">
-                          {result.impersonation.brand}
-                        </span>
-                      </p>
-                    </div>
-                    <div className="text-right pl-4 border-l border-orange-500/30">
-                      <span className="text-2xl font-bold text-orange-500">
-                        {(result.impersonation.similarity * 100).toFixed(0)}%
-                      </span>
-                      <p className="text-[10px] text-slate-400">Match</p>
-                    </div>
+                <div className="mt-6 flex items-center gap-3 bg-orange-500/10 border border-orange-500/30 px-5 py-3 rounded-xl animate-pulse">
+                  <AlertTriangle className="w-5 h-5 text-orange-500" />
+                  <div className="text-left">
+                    <p className="text-orange-200 text-xs font-bold uppercase">Impersonation Detected</p>
+                    <p className="text-orange-400 text-sm font-semibold">Meniru: {result.impersonation.brand} ({(result.impersonation.similarity * 100).toFixed(0)}%)</p>
                   </div>
                 </div>
               )}
-              {/* ------------------------------------ */}
+            </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                <div className="bg-slate-900/50 p-4 rounded-2xl border border-slate-800 flex flex-col items-center justify-center">
-                  <p className="text-slate-500 text-xs uppercase font-bold tracking-wider mb-2">Risk Level</p>
-                  <span className={`px-4 py-1 rounded-full text-sm font-bold uppercase ${
-                    result.risk_level === 'high' ? 'bg-red-500 text-white' :
-                    result.risk_level === 'medium' ? 'bg-yellow-500 text-black' :
-                    'bg-emerald-500 text-white'
-                  }`}>
-                    {result.risk_level || 'UNKNOWN'}
+            {/* 2. CONFIDENCE & STATS - 4 Col */}
+            <div className="md:col-span-4 space-y-6">
+              {/* Confidence */}
+              <div className="bg-slate-900/50 border border-slate-800 p-6 rounded-3xl h-full flex flex-col justify-center items-center relative overflow-hidden">
+                <p className="text-slate-500 text-xs font-bold uppercase tracking-wider mb-2">AI Confidence</p>
+                <div className="relative z-10">
+                  <span className="text-6xl font-black text-white tracking-tighter">
+                    {(result.confidence * 100).toFixed(0)}
                   </span>
+                  <span className="text-xl text-slate-500 font-bold">%</span>
                 </div>
-
-                <div className="bg-slate-900/50 p-4 rounded-2xl border border-slate-800 flex flex-col items-center justify-center">
-                  <p className="text-slate-500 text-xs uppercase font-bold tracking-wider mb-1">AI Confidence</p>
-                  <p className="text-3xl font-mono font-bold text-white">
-                    {(result.confidence * 100).toFixed(1)}%
-                  </p>
+                {/* Progress Circle visual hack */}
+                <svg className="absolute w-full h-full inset-0 pointer-events-none opacity-20" viewBox="0 0 100 100">
+                  <circle cx="50" cy="50" r="40" fill="none" stroke={result.is_phishing ? "#ef4444" : "#10b981"} strokeWidth="1" />
+                </svg>
+              </div>
+              
+              {/* Timing */}
+              <div className="bg-slate-900/50 border border-slate-800 p-6 rounded-3xl flex items-center justify-between">
+                <div>
+                  <p className="text-slate-500 text-xs font-bold uppercase tracking-wider">Waktu Analisis</p>
+                  <p className="text-2xl font-bold text-white mt-1">{result.analysis_time_ms} <span className="text-sm text-slate-500">ms</span></p>
                 </div>
+                <Activity className="w-8 h-8 text-blue-500/50" />
+              </div>
+            </div>
 
-                <div className="bg-slate-900/50 p-4 rounded-2xl border border-slate-800 flex flex-col justify-center items-center">
-                  <p className="text-slate-500 text-xs uppercase font-bold tracking-wider mb-1 text-center">Analysis Time</p>
-                  <p className="text-xl font-mono font-bold text-white flex items-center gap-2">
-                    <Clock className="w-5 h-5 text-blue-400" />
-                    {result.analysis_time_ms} ms
-                  </p>
+            {/* 3. NETWORK & GEOLOCATION (MAP) - 12 Col */}
+            {result.network_info && result.network_info.location && result.network_info.location.lat ? (
+              <div className="md:col-span-12 bg-slate-900/40 border border-slate-800 rounded-3xl p-1 overflow-hidden">
+                <div className="bg-slate-950/80 p-4 flex flex-wrap gap-6 items-center border-b border-slate-800/50 backdrop-blur-sm relative z-10">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-blue-500/10 rounded-lg"><Server className="w-5 h-5 text-blue-400" /></div>
+                    <div>
+                      <p className="text-[10px] text-slate-500 uppercase font-bold">IP Address</p>
+                      <p className="text-white font-mono text-sm">{result.network_info.ip_address}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-purple-500/10 rounded-lg"><Globe className="w-5 h-5 text-purple-400" /></div>
+                    <div>
+                      <p className="text-[10px] text-slate-500 uppercase font-bold">ISP / Hosting</p>
+                      <p className="text-white font-medium text-sm">{result.network_info.location.isp || 'Unknown'}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-orange-500/10 rounded-lg"><MapPin className="w-5 h-5 text-orange-400" /></div>
+                    <div>
+                      <p className="text-[10px] text-slate-500 uppercase font-bold">Lokasi Server</p>
+                      <p className="text-white font-medium text-sm">
+                        {result.network_info.location.city}, {result.network_info.location.country}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                
+                {/* EMBEDDED MAP */}
+                <div className="relative w-full h-64 bg-slate-800">
+                  <iframe 
+                    width="100%" 
+                    height="100%" 
+                    frameBorder="0" 
+                    scrolling="no" 
+                    marginHeight={0} 
+                    marginWidth={0} 
+                    src={getMapUrl(result.network_info.location.lat, result.network_info.location.lon)}
+                    className="opacity-80 hover:opacity-100 transition-opacity grayscale hover:grayscale-0"
+                  ></iframe>
+                  {/* Overlay agar tidak kena scroll mouse saat page scroll */}
+                  <div className="absolute inset-0 pointer-events-none shadow-[inset_0_0_50px_rgba(2,6,23,1)]"></div>
                 </div>
               </div>
-
-              {result.features && (
-                <div className="bg-slate-900/30 p-4 rounded-2xl border border-slate-800/50">
-                  <p className="text-slate-500 text-xs uppercase font-bold tracking-wider mb-3 text-center">Technical Analysis</p>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
-                    <div className="flex flex-col items-center bg-slate-950 p-2 rounded-lg">
-                      <Lock className="w-4 h-4 mb-1 text-slate-400"/>
-                      <span className="text-slate-500 text-[10px]">Security</span>
-                      <span className={result.features.is_https || result.features.IsHTTPS ? "text-emerald-400" : "text-red-400"}>
-                        {result.features.is_https || result.features.IsHTTPS ? "HTTPS" : "HTTP"}
-                      </span>
-                    </div>
-
-                    <div className="flex flex-col items-center bg-slate-950 p-2 rounded-lg">
-                      <Globe className="w-4 h-4 mb-1 text-slate-400"/>
-                      <span className="text-slate-500 text-[10px]">Domain Len</span>
-                      <span className="text-white font-mono">
-                         {result.features.domain_length || new URL(result.url).hostname.length}
-                      </span>
-                    </div>
-
-                    <div className="flex flex-col items-center bg-slate-950 p-2 rounded-lg">
-                      <Search className="w-4 h-4 mb-1 text-slate-400"/>
-                      <span className="text-slate-500 text-[10px]">Similarity</span>
-                      <span className="text-white font-mono">
-                        {result.features.url_similarity_index ? result.features.url_similarity_index.toFixed(1) : 0}%
-                      </span>
-                    </div>
-
-                    <div className="flex flex-col items-center bg-slate-950 p-2 rounded-lg">
-                      <AlertTriangle className="w-4 h-4 mb-1 text-slate-400"/>
-                      <span className="text-slate-500 text-[10px]">Special Chars</span>
-                      <span className="text-white font-mono">
-                        {result.features.no_of_other_special_chars_in_url || 0}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* --- HISTORY SECTION --- */}
-        {history.length > 0 && (
-          <div className="pt-8 border-t border-slate-800/50">
-            <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center gap-2">
-                <History className="text-slate-400 w-5 h-5" />
-                <h3 className="text-xl font-bold text-slate-200">Riwayat Pengecekan</h3>
+            ) : (
+              // Fallback jika tidak ada lokasi
+              <div className="md:col-span-12 bg-slate-900/40 border border-slate-800 rounded-3xl p-6 flex items-center justify-center text-slate-500 italic">
+                <Globe className="w-5 h-5 mr-2" /> Data lokasi server tidak tersedia.
               </div>
-              <button 
-                onClick={clearHistory}
-                className="text-xs text-red-400 hover:text-red-300 flex items-center gap-1 px-3 py-1 rounded-full hover:bg-red-900/20 transition-colors"
-              >
-                <Trash2 className="w-3 h-3" />
-                Hapus Semua
-              </button>
+            )}
+
+            {/* 4. TECHNICAL FEATURES GRID - 12 Col */}
+            <div className="md:col-span-12">
+              <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
+                <Lock className="w-5 h-5 text-emerald-400" /> Analisis Fitur Teknis
+              </h3>
+              
+              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3">
+                {result.features && Object.entries({
+                  "HTTPS Valid": result.features.is_https ? "Yes" : "No",
+                  "Domain Length": result.features.domain_length || result.features.tld?.length + 5 || "N/A",
+                  "Subdomains": result.features.no_of_subdomains || result.features.no_of_dot_in_url || 0,
+                  "Similarity": `${(result.features.url_similarity_index || 0).toFixed(1)}%`,
+                  "Special Chars": result.features.special_chars || result.features.no_of_other_special_chars_in_url || 0,
+                  "Has Login": result.features.has_submit_button ? "Detected" : "No",
+                  "Obfuscation": result.features.char_continuation_rate > 0.3 ? "Possible" : "Low",
+                  "TLD": `.${result.features.tld || 'com'}`,
+                  "Status": result.features.url_is_live ? "Live" : "Offline",
+                  "Redirects": result.network_info?.redirect_chain?.length || 0
+                }).map(([key, value], i) => (
+                  <div key={i} className="bg-slate-900/60 border border-slate-800 p-3 rounded-xl flex flex-col items-center text-center hover:border-slate-600 transition-colors">
+                    <span className="text-[10px] text-slate-500 uppercase font-bold mb-1">{key}</span>
+                    <span className={`font-mono font-bold ${
+                      (value === "No" || value === "Offline" || value === "Possible") && key !== "HTTPS Valid" ? "text-red-400" : 
+                      (value === "No" && key === "HTTPS Valid") ? "text-red-400" : "text-white"
+                    }`}>
+                      {value}
+                    </span>
+                  </div>
+                ))}
+              </div>
             </div>
 
-            <div className="space-y-3">
-              {history.map((item, index) => (
-                <div 
-                  key={index} 
-                  className="bg-slate-900/40 p-4 rounded-xl border border-slate-800 flex items-center justify-between hover:border-slate-700 transition-all group"
-                >
-                  <div className="flex-1 min-w-0 pr-4">
-                    <p className="text-slate-300 font-mono text-sm truncate">{item.url}</p>
-                    <div className="flex items-center gap-3 mt-1 text-xs text-slate-500">
-                      <span className="flex items-center gap-1">
-                        <Clock className="w-3 h-3" />
-                        {new Date(item.timestamp).toLocaleDateString()}
-                      </span>
-                      <span>•</span>
-                      <span>Score: {(item.confidence_score * 100).toFixed(0)}%</span>
-                    </div>
-                  </div>
-                  <div className={`px-3 py-1 rounded-lg text-xs font-bold border ${
-                    item.is_phishing === true || item.is_phishing === 1
-                      ? 'bg-red-500/10 text-red-400 border-red-500/20' 
-                      : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                  }`}>
-                    {item.is_phishing === true || item.is_phishing === 1 ? 'PHISHING' : 'SAFE'}
-                  </div>
-                </div>
-              ))}
-            </div>
           </div>
         )}
 

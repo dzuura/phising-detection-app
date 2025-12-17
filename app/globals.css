@@ -33,3 +33,30 @@ body {
   -ms-overflow-style: none;  /* IE and Edge */
   scrollbar-width: none;  /* Firefox */
 }
+
+/* Tambahkan ini untuk fitur pause saat hover */
+.hover\:pause-scroll:hover {
+  animation-play-state: paused;
+}
+
+/* --- ANIMASI INFINITE SCROLL --- */
+@keyframes scroll {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    /* Geser -50% karena kita menduplikasi list-nya */
+    transform: translateX(-50%);
+  }
+}
+
+.animate-scroll {
+  display: flex;
+  width: max-content; /* Pastikan lebarnya mengikuti konten */
+  animation: scroll 40s linear infinite; /* 40 detik per putaran */
+}
+
+/* Biar berhenti pas di-hover mouse */
+.pause-scroll:hover {
+  animation-play-state: paused;
+}

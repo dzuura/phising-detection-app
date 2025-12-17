@@ -80,7 +80,7 @@ export default function Home() {
       <nav className={`fixed top-0 left-0 w-full z-50 transition-all duration-500 transform ${showNavbar ? 'translate-y-0 opacity-100' : '-translate-y-full opacity-0'
         }`}>
         <div className="backdrop-blur-md bg-slate-900/80 border-b border-slate-800 p-4">
-          <div className="max-w-6xl mx-auto flex items-center justify-between">
+          <div className="max-w-4xl mx-auto flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Lock className="w-6 h-6 text-emerald-400" />
               <span className="font-bold text-xl tracking-tight text-white">PhishGuard</span>

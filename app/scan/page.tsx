@@ -6,15 +6,15 @@ import Link from 'next/link';
 import { 
   ShieldCheck, ShieldAlert, Search, Loader2, Activity, 
   ArrowLeft, AlertTriangle, History, Trash2, Clock, 
-  Globe, Lock, MapPin, Server, ChevronDown, ExternalLink 
+  Globe, Lock, MapPin, Server, ChevronDown, XCircle, MousePointerClick
 } from 'lucide-react';
 
-// Tipe Data
 interface ScanHistory {
   url: string;
   is_phishing: boolean | number;
-  confidence_score: number;
+  confidence: number;
   timestamp: string;
+  full_result: any;
 }
 
 export default function ScanPage() {
@@ -30,12 +30,11 @@ export default function ScanPage() {
 
   const API_URL = 'http://127.0.0.1:8000/api/v1/predict'; 
 
-  // Load History & Click Outside Listener
+  // Load History
   useEffect(() => {
     const savedHistory = localStorage.getItem('scanHistory');
     if (savedHistory) setHistory(JSON.parse(savedHistory));
 
-    // Tutup dropdown kalau klik di luar
     const handleClickOutside = (event: MouseEvent) => {
       if (historyRef.current && !historyRef.current.contains(event.target as Node)) {
         setShowHistory(false);
@@ -46,13 +45,18 @@ export default function ScanPage() {
   }, []);
 
   const saveToHistory = (data: any, scannedUrl: string) => {
+    // Hapus duplikat URL lama biar yang baru naik ke atas
+    const filteredHistory = history.filter(item => item.url !== scannedUrl);
+
     const newRecord: ScanHistory = {
       url: scannedUrl,
       is_phishing: data.is_phishing,
-      confidence_score: data.confidence, 
+      confidence: data.confidence, 
+      full_result: data, 
       timestamp: new Date().toISOString(),
     };
-    const updatedHistory = [newRecord, ...history].slice(0, 10);
+
+    const updatedHistory = [newRecord, ...filteredHistory].slice(0, 10);
     setHistory(updatedHistory);
     localStorage.setItem('scanHistory', JSON.stringify(updatedHistory));
   };
@@ -60,22 +64,30 @@ export default function ScanPage() {
   const clearHistory = () => {
     setHistory([]);
     localStorage.removeItem('scanHistory');
+    setResult(null);
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!url) return;
-    setLoading(true);
-    // ...
-    try {
-      const response = await axios.post(API_URL, { url: url });
-      
-      // 👇 TAMBAHKAN LOG INI
-      console.log("🔍 HASIL SCAN:", response.data);
-      console.log("🌍 DATA LOKASI:", response.data.network_info?.location);
+  // --- FUNGSI UTAMA SCANNING (DIPISAH SUPAYA BISA DIPANGGIL HISTORY) ---
+  const analyzeUrl = async (targetUrl: string) => {
+    // 1. Validasi & Auto-HTTPS
+    let formattedUrl = targetUrl.trim();
+    if (!formattedUrl) return;
+    if (!/^https?:\/\//i.test(formattedUrl)) {
+      formattedUrl = 'https://' + formattedUrl;
+    }
 
+    // 2. Update State UI
+    setUrl(formattedUrl); // Masukkan ke form
+    setLoading(true);
+    setError('');
+    setResult(null);
+    setShowHistory(false); // Tutup dropdown
+
+    // 3. Panggil API
+    try {
+      const response = await axios.post(API_URL, { url: formattedUrl });
       setResult(response.data);
-      saveToHistory(response.data, url);
+      saveToHistory(response.data, formattedUrl);
     } catch (err: any) {
       console.error(err);
       if (err.code === "ERR_NETWORK") {
@@ -87,10 +99,27 @@ export default function ScanPage() {
       setLoading(false);
     }
   };
+  // ---------------------------------------------------------------------
 
-  // Helper untuk generate URL Map (OpenStreetMap Embed)
+  // Handler Tombol "Scan" Manual
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    analyzeUrl(url);
+  };
+
+  // Handler Klik History -> Langsung Scan Ulang (Fresh)
+  const handleHistoryClick = (item: ScanHistory) => {
+    // Opsi A: Gunakan data cache (Instant, tanpa loading)
+    // setUrl(item.url);
+    // setResult(item.full_result);
+    // setShowHistory(false);
+    
+    // Opsi B: Scan Ulang (Fresh API Call) - Sesuai requestmu "tombol scan otomatis terklik"
+    analyzeUrl(item.url);
+  };
+
   const getMapUrl = (lat: string, lon: string) => {
-    const delta = 0.05; // Zoom level logic
+    const delta = 0.05; 
     const bbox = `${parseFloat(lon)-delta},${parseFloat(lat)-delta},${parseFloat(lon)+delta},${parseFloat(lat)+delta}`;
     return `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${lat},${lon}`;
   };
@@ -126,7 +155,6 @@ export default function ScanPage() {
             <ChevronDown className={`w-3 h-3 transition-transform ${showHistory ? 'rotate-180' : ''}`} />
           </button>
 
-          {/* Dropdown Content */}
           {showHistory && (
             <div className="absolute right-0 top-12 w-80 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
               <div className="p-4 border-b border-slate-800 flex justify-between items-center">
@@ -140,20 +168,32 @@ export default function ScanPage() {
                   <p className="text-center text-slate-600 text-sm py-4">Belum ada riwayat.</p>
                 ) : (
                   history.map((item, idx) => (
-                    <div key={idx} className="p-3 hover:bg-slate-800/50 rounded-lg cursor-default group transition-colors">
+                    // BUTTON KLIK HISTORY -> TRIGGER SCAN
+                    <button 
+                      key={idx} 
+                      onClick={() => handleHistoryClick(item)} 
+                      className="w-full text-left p-3 hover:bg-slate-800/50 rounded-lg group transition-all border border-transparent hover:border-slate-700 active:scale-95"
+                    >
                       <div className="flex justify-between items-start mb-1">
-                        <p className="text-slate-300 text-xs font-mono truncate w-48">{item.url}</p>
+                        <p className="text-slate-300 text-xs font-mono truncate w-48 group-hover:text-emerald-400 transition-colors">
+                          {item.url}
+                        </p>
                         <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${
                           item.is_phishing ? 'bg-red-500/20 text-red-400' : 'bg-emerald-500/20 text-emerald-400'
                         }`}>
                           {item.is_phishing ? 'PHISHING' : 'SAFE'}
                         </span>
                       </div>
-                      <p className="text-[10px] text-slate-500 flex items-center gap-1">
-                        <Clock className="w-3 h-3" />
-                        {new Date(item.timestamp).toLocaleDateString()}
-                      </p>
-                    </div>
+                      <div className="flex justify-between items-center text-[10px] text-slate-500">
+                        <span className="flex items-center gap-1">
+                           <Clock className="w-3 h-3" />
+                           {new Date(item.timestamp).toLocaleDateString()}
+                        </span>
+                        <span className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity text-emerald-500 font-bold">
+                           <MousePointerClick className="w-3 h-3" /> Scan Ulang
+                        </span>
+                      </div>
+                    </button>
                   ))
                 )}
               </div>
@@ -181,8 +221,8 @@ export default function ScanPage() {
             <form onSubmit={handleSubmit} className="relative bg-slate-900 rounded-xl p-2 flex items-center border border-slate-800 shadow-2xl">
               <Search className="w-6 h-6 text-slate-500 ml-4 mr-2" />
               <input 
-                type="url" 
-                placeholder="Tempel link mencurigakan di sini..." 
+                type="text"
+                placeholder="cth: google.com atau faceb00k.com" 
                 className="w-full bg-transparent border-none outline-none text-slate-200 placeholder-slate-600 text-lg h-12"
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
@@ -205,17 +245,16 @@ export default function ScanPage() {
           )}
         </div>
 
-        {/* --- RESULT DASHBOARD (BENTO GRID) --- */}
+        {/* --- RESULT DASHBOARD --- */}
         {result && (
           <div className="animate-in fade-in slide-in-from-bottom-8 duration-700 grid grid-cols-1 md:grid-cols-12 gap-6">
             
-            {/* 1. STATUS CARD (MAIN) - 8 Col */}
-            <div className={`md:col-span-8 p-8 rounded-3xl border relative overflow-hidden flex flex-col justify-center items-center text-center ${
+            {/* --- 1. STATUS CARD (LEFT COL) --- */}
+            <div className={`md:col-span-8 p-8 rounded-3xl border relative overflow-hidden flex flex-col justify-center items-center text-center min-h-[300px] ${
               result.is_phishing 
                 ? 'bg-red-950/20 border-red-500/30 shadow-[0_0_50px_-10px_rgba(239,68,68,0.2)]' 
                 : 'bg-emerald-950/20 border-emerald-500/30 shadow-[0_0_50px_-10px_rgba(16,185,129,0.2)]'
             }`}>
-              {/* Background Glow */}
               <div className={`absolute inset-0 opacity-20 blur-3xl rounded-full ${
                 result.is_phishing ? 'bg-red-600' : 'bg-emerald-600'
               } -z-10 scale-50`} />
@@ -235,8 +274,8 @@ export default function ScanPage() {
 
               {/* Impersonation Warning */}
               {result.impersonation && (
-                <div className="mt-6 flex items-center gap-3 bg-orange-500/10 border border-orange-500/30 px-5 py-3 rounded-xl animate-pulse">
-                  <AlertTriangle className="w-5 h-5 text-orange-500" />
+                <div className="mt-6 flex items-center gap-3 bg-orange-500/10 border border-orange-500/30 px-5 py-3 rounded-xl animate-pulse w-full max-w-md">
+                  <AlertTriangle className="w-5 h-5 text-orange-500 shrink-0" />
                   <div className="text-left">
                     <p className="text-orange-200 text-xs font-bold uppercase">Impersonation Detected</p>
                     <p className="text-orange-400 text-sm font-semibold">Meniru: {result.impersonation.brand} ({(result.impersonation.similarity * 100).toFixed(0)}%)</p>
@@ -245,10 +284,11 @@ export default function ScanPage() {
               )}
             </div>
 
-            {/* 2. CONFIDENCE & STATS - 4 Col */}
-            <div className="md:col-span-4 space-y-6">
-              {/* Confidence */}
-              <div className="bg-slate-900/50 border border-slate-800 p-6 rounded-3xl h-full flex flex-col justify-center items-center relative overflow-hidden">
+            {/* --- 2. STATS COLUMN (RIGHT COL) --- */}
+            <div className="md:col-span-4 flex flex-col gap-6">
+              
+              {/* Confidence Card */}
+              <div className="bg-slate-900/50 border border-slate-800 p-6 rounded-3xl flex-1 flex flex-col justify-center items-center relative overflow-hidden min-h-[200px]">
                 <p className="text-slate-500 text-xs font-bold uppercase tracking-wider mb-2">AI Confidence</p>
                 <div className="relative z-10">
                   <span className="text-6xl font-black text-white tracking-tighter">
@@ -256,14 +296,13 @@ export default function ScanPage() {
                   </span>
                   <span className="text-xl text-slate-500 font-bold">%</span>
                 </div>
-                {/* Progress Circle visual hack */}
                 <svg className="absolute w-full h-full inset-0 pointer-events-none opacity-20" viewBox="0 0 100 100">
                   <circle cx="50" cy="50" r="40" fill="none" stroke={result.is_phishing ? "#ef4444" : "#10b981"} strokeWidth="1" />
                 </svg>
               </div>
               
-              {/* Timing */}
-              <div className="bg-slate-900/50 border border-slate-800 p-6 rounded-3xl flex items-center justify-between">
+              {/* Timing Card */}
+              <div className="bg-slate-900/50 border border-slate-800 p-6 rounded-3xl flex items-center justify-between h-[100px]">
                 <div>
                   <p className="text-slate-500 text-xs font-bold uppercase tracking-wider">Waktu Analisis</p>
                   <p className="text-2xl font-bold text-white mt-1">{result.analysis_time_ms} <span className="text-sm text-slate-500">ms</span></p>
@@ -272,7 +311,24 @@ export default function ScanPage() {
               </div>
             </div>
 
-            {/* 3. NETWORK & GEOLOCATION (MAP) - 12 Col */}
+            {/* --- 3. RISK INDICATORS (FULL ROW) --- */}
+            {result.risk_indicators && result.risk_indicators.length > 0 && (
+              <div className="md:col-span-12 bg-red-950/20 border border-red-500/20 rounded-3xl p-6 animate-in slide-in-from-bottom-2">
+                <h3 className="text-red-400 font-bold mb-4 flex items-center gap-2">
+                  <AlertTriangle className="w-5 h-5" /> Indikator Risiko Ditemukan
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {result.risk_indicators.map((indicator: string, index: number) => (
+                    <div key={index} className="bg-red-950/50 p-3 rounded-xl border border-red-500/10 flex items-start gap-3">
+                      <XCircle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
+                      <span className="text-red-200 text-sm font-medium">{indicator}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* --- 4. NETWORK & GEOLOCATION (MAP) --- */}
             {result.network_info && result.network_info.location && result.network_info.location.lat ? (
               <div className="md:col-span-12 bg-slate-900/40 border border-slate-800 rounded-3xl p-1 overflow-hidden">
                 <div className="bg-slate-950/80 p-4 flex flex-wrap gap-6 items-center border-b border-slate-800/50 backdrop-blur-sm relative z-10">
@@ -301,7 +357,6 @@ export default function ScanPage() {
                   </div>
                 </div>
                 
-                {/* EMBEDDED MAP */}
                 <div className="relative w-full h-64 bg-slate-800">
                   <iframe 
                     width="100%" 
@@ -313,18 +368,16 @@ export default function ScanPage() {
                     src={getMapUrl(result.network_info.location.lat, result.network_info.location.lon)}
                     className="opacity-80 hover:opacity-100 transition-opacity grayscale hover:grayscale-0"
                   ></iframe>
-                  {/* Overlay agar tidak kena scroll mouse saat page scroll */}
                   <div className="absolute inset-0 pointer-events-none shadow-[inset_0_0_50px_rgba(2,6,23,1)]"></div>
                 </div>
               </div>
             ) : (
-              // Fallback jika tidak ada lokasi
               <div className="md:col-span-12 bg-slate-900/40 border border-slate-800 rounded-3xl p-6 flex items-center justify-center text-slate-500 italic">
                 <Globe className="w-5 h-5 mr-2" /> Data lokasi server tidak tersedia.
               </div>
             )}
 
-            {/* 4. TECHNICAL FEATURES GRID - 12 Col */}
+            {/* --- 5. TECHNICAL FEATURES GRID --- */}
             <div className="md:col-span-12">
               <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
                 <Lock className="w-5 h-5 text-emerald-400" /> Analisis Fitur Teknis
